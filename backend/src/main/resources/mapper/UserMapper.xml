@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.edu.learning.mapper.UserMapper">
+  <sql id="columns">id,username,real_name,password_hash,role,enabled,must_change_password,token_version,created_at</sql>
+  <select id="byUsername" resultType="cn.edu.learning.pojo.Models$User">SELECT <include refid="columns"/> FROM app_user WHERE username=#{username}</select>
+  <select id="byId" resultType="cn.edu.learning.pojo.Models$User">SELECT <include refid="columns"/> FROM app_user WHERE id=#{id}</select>
+  <insert id="insert">INSERT INTO app_user(username,real_name,password_hash,role,must_change_password) VALUES(#{username},#{realName},#{hash},#{role},0)</insert>
+  <update id="password">UPDATE app_user SET password_hash=#{hash},must_change_password=#{mustChange},token_version=token_version+1,updated_at=CURRENT_TIMESTAMP(3) WHERE id=#{id}</update>
+  <update id="revoke">UPDATE app_user SET token_version=token_version+1,updated_at=CURRENT_TIMESTAMP(3) WHERE id=#{id}</update>
+  <update id="status">UPDATE app_user SET enabled=#{enabled},token_version=token_version+1,updated_at=CURRENT_TIMESTAMP(3) WHERE id=#{id}</update>
+  <sql id="filter">WHERE role='STUDENT'<if test="keyword != null and keyword != ''"> AND (username LIKE CONCAT('%',#{keyword},'%') OR real_name LIKE CONCAT('%',#{keyword},'%'))</if><if test="enabled != null"> AND enabled=#{enabled}</if></sql>
+  <select id="students" resultType="cn.edu.learning.pojo.Models$User">SELECT <include refid="columns"/> FROM app_user <include refid="filter"/> ORDER BY username LIMIT #{limit} OFFSET #{offset}</select>
+  <select id="studentCount" resultType="long">SELECT COUNT(*) FROM app_user <include refid="filter"/></select>
+</mapper>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.edu.learning.mapper.QuestionMapper">
+ <sql id="row">q.id,q.chapter_id,c.course_id,q.question_type,q.stem,q.option_a,q.option_b,q.option_c,q.option_d,q.correct_answer,q.explanation</sql>
+ <select id="byId" resultType="cn.edu.learning.pojo.Models$Question">SELECT <include refid="row"/> FROM question q JOIN chapter c ON c.id=q.chapter_id WHERE q.id=#{id}</select>
+ <select id="candidates" resultType="cn.edu.learning.pojo.Models$Question">SELECT <include refid="row"/> FROM question q JOIN chapter c ON c.id=q.chapter_id WHERE c.course_id=#{courseId} AND c.is_current=1<if test="chapterId != null"> AND c.id=#{chapterId}</if><if test="knowledgeId != null"> AND EXISTS(SELECT 1 FROM question_knowledge qk WHERE qk.question_id=q.id AND qk.knowledge_id=#{knowledgeId})</if> ORDER BY q.id</select>
+ <select id="wasWrong" resultType="int">SELECT COUNT(*) FROM practice_item i JOIN practice p ON p.id=i.practice_id WHERE p.student_id=#{studentId} AND p.status='SUBMITTED' AND p.archived=0 AND i.question_id=#{questionId} AND i.is_correct=0</select>
+</mapper>

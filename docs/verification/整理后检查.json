@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-20",
+  "missingRequiredPaths": [],
+  "junit": [
+    {
+      "name": "cn.edu.learning.interceptor.AuthInterceptorTest",
+      "tests": "1",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "cn.edu.learning.service.ChapterPracticeTest",
+      "tests": "2",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "cn.edu.learning.utils.AnswerRulesTest",
+      "tests": "4",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0"
+    }
+  ],
+  "sourceCodeChanged": false,
+  "learningRecordsModified": false,
+  "cleanupMode": "reversible archive"
+}

@@ -1,0 +1,82 @@
+import {api,query} from './api.js?v=20261020-chart-spacing-1';
+import {$,esc,pct,time,number,empty,toast,busy,heading,stats,table,pagination,courseOptions,bar,trendChart,badge} from './common.js?v=20261020-chart-spacing-1';
+import {historyTable} from './student.js?v=20261020-chart-spacing-1';
+
+export async function adminPage(page){const pages={dashboard,students,'admin-courses':adminCourses,'admin-practices':adminPractices,'student-detail':studentDetail};if(pages[page])await pages[page]();}
+
+async function adminCourses(){
+ const [courses,overview]=await Promise.all([api('/courses'),api('/admin/summary')]);
+ const metrics=new Map(overview.courses.map(c=>[c.courseId,c]));
+ $('#main').innerHTML=heading('COURSE OVERVIEW','课程概览','点击课程卡片查看整体学习分析，或进入该课程的已提交练习。','<a class="button secondary" href="/admin/dashboard.html">← 返回整体统计</a>')+`<div class="grid three">${courses.map((c,i)=>{
+  const r=metrics.get(c.id);
+  return `<article class="course-card"><div class="course-icon">${['∫','▤','⌘','⌗','⌁'][i%5]}</div><h3>${esc(c.name)}</h3><p class="muted small-text">5 章 · ${number(c.questionCount)} 道题 · 5 套固定练习</p><div class="course-metrics"><div><strong>${number(r?.participantCount)}</strong>参与学生</div><div><strong>${number(r?.practiceCount)}</strong>完成练习</div><div><strong>${pct(r?.accuracy)}</strong>正确率</div></div><div class="course-actions"><a class="course-analysis-link" aria-label="查看${esc(c.name)}整体学习分析" href="/admin/dashboard.html?courseId=${esc(c.id)}#knowledge-section">查看学习分析 ↗</a><a class="button secondary small" href="/admin/practices.html?courseId=${esc(c.id)}">练习记录 →</a></div></article>`;
+ }).join('')}</div>`;
+}
+
+async function adminPractices(){
+ const courses=await api('/courses');
+ const students=[];let studentPage=1,studentTotal=0;
+ do{
+  const result=await api('/admin/students'+query({page:studentPage++,pageSize:50}));
+  students.push(...result.rows);studentTotal=result.total;
+ }while(students.length<studentTotal);
+ let page=1,pageSize=10;
+ const params=new URLSearchParams(location.search);
+ $('#main').innerHTML=heading('PRACTICE RECORDS','全部练习记录','按课程和学生查看已提交练习，成绩和答案仅供查看。','<a class="button secondary" href="/admin/dashboard.html">← 返回整体统计</a>')+`<div class="card"><div class="filters"><label for="course" class="visually-hidden">筛选课程</label><select id="course">${courseOptions(courses,true)}</select><label for="student-filter" class="visually-hidden">筛选学生</label><select id="student-filter"><option value="">全部学生</option>${students.map(s=>`<option value="${esc(s.id)}">${esc(s.username)} · ${esc(s.realName)}</option>`).join('')}</select></div><div id="all-practices"></div><div id="pagination"></div></div>`;
+ $('#course').value=params.get('courseId')||'';
+ $('#student-filter').value=params.get('studentId')||'';
+ async function load(){
+  const data=await api('/admin/practices'+query({courseId:$('#course').value,studentId:$('#student-filter').value,page,pageSize}));
+  $('#all-practices').innerHTML=data.rows.length?table(['学生','课程 / 章节','提交时间','练习类型','题量','得分 / 正确率','操作'],data.rows.map(r=>`<tr><td><a href="/admin/student-detail.html${query({id:r.studentId,courseId:r.courseId})}">${esc(r.studentName)}</a><span class="sub">${esc(r.username)}</span></td><td>${esc(r.courseName)}${r.chapterName?`<span class="sub">${esc(r.chapterName)}</span>`:''}</td><td>${esc(time(r.submittedAt))}</td><td><span class="badge">${r.sourceType==='CHAPTER'?'固定章节练习':r.sourceType==='WRONG'?'错题重练':'自主随机练习'}</span></td><td>${number(r.questionCount)}</td><td>${r.correctCount} / ${r.questionCount}<span class="sub">${pct(r.accuracy)}</span></td><td><a href="/practice-result.html?id=${esc(r.practiceId)}">查看结果 →</a></td></tr>`)):empty('没有匹配的练习记录','切换课程或学生筛选条件后重试。');
+  pagination($('#pagination'),data.total,page,pageSize,p=>{page=p;load().catch(e=>toast(e.message));},size=>{pageSize=size;page=1;load().catch(e=>toast(e.message));});
+ }
+ $('#course').onchange=$('#student-filter').onchange=()=>{page=1;load().catch(e=>toast(e.message));};
+ await load();
+}
+function adminKnowledge(rows,personal=false){return table(['知识点','题库题量',personal?'已练不同题':'参与学生',personal?'答对题目':'有效作答组合','正确率','掌握情况'],rows.map(r=>`<tr><td>${esc(r.knowledgeName)}</td><td>${number(r.bankCount)}</td><td>${number(personal?r.questionCount:r.participantCount)}</td><td>${number(personal?r.correctCount:r.questionCount)}</td><td>${pct(r.accuracy)}${bar(r.accuracy)}</td><td>${badge(r.level)}</td></tr>`));}
+async function dashboard(){
+ const [overview,courses]=await Promise.all([api('/admin/summary'),api('/courses')]);let page=1,pageSize=10;
+ const participants=overview.courses.reduce((s,r)=>s+Number(r.practiceCount),0),answers=overview.courses.reduce((s,r)=>s+Number(r.answerCount),0);
+ $('#main').innerHTML=heading('TEACHING OVERVIEW','看见学习情况，找到共性问题','从课程与知识点出发，了解学生的练习参与和掌握情况。',`<a class="button" href="/admin/students.html">管理学生 →</a>`)+stats([{label:'学生账号',value:number(overview.students.studentCount),unit:'人',note:`${number(overview.students.enabledCount)} 个启用账号 · 查看学生 →`,href:'/admin/students.html'},{label:'课程数量',value:courses.length,unit:'门',note:'查看全部课程 →',href:'/admin/courses.html'},{label:'累计练习',value:number(participants),unit:'次',note:'查看全部已提交练习 →',href:'/admin/practices.html'},{label:'累计作答',value:number(answers),unit:'题次',note:'查看作答所属练习 →',href:'/admin/practices.html'}])+`<div class="section-title"><h2>课程概览</h2><span class="muted small-text">各课程独立统计，不生成综合能力分数</span></div><div class="card">${table(['课程','参与学生','已提交练习','累计答题','累计正确率'],overview.courses.map(r=>`<tr><td><a href="/admin/dashboard.html?courseId=${esc(r.courseId)}#knowledge-section"><strong>${esc(r.courseName)} ↗</strong></a></td><td>${number(r.participantCount)} 人</td><td>${number(r.practiceCount)} 次</td><td>${number(r.answerCount)} 题次</td><td>${pct(r.accuracy)}${bar(r.accuracy)}</td></tr>`))}</div><div class="section-title" id="knowledge-section"><h2>深入查看一门课程</h2><label class="visually-hidden" for="course">课程</label><select id="course">${courseOptions(courses)}</select></div><div class="card"><div class="card-header"><h2>共性薄弱知识点</h2><span class="muted small-text">取每位学生每道题最近一次结果</span></div><div class="notice">参与学生不足 3 人或有效作答组合不足 3 条时，不判断整体掌握等级。一道题关联多个知识点时，各知识点分别计算。</div><div id="knowledge-list"></div></div><div class="card"><div class="card-header"><h2>学生练习情况</h2><span class="muted small-text">按学号排列</span></div><div id="student-list"></div><div id="pagination"></div></div>`;
+ $('#course').value=new URLSearchParams(location.search).get('courseId')||courses[0]?.id;
+ async function studentRows(){const data=await api('/admin/course-students'+query({courseId:$('#course').value,page,pageSize}));$('#student-list').innerHTML=data.rows.length?table(['学号','姓名','练习次数','累计题量','正确率','详情'],data.rows.map(r=>`<tr><td>${esc(r.username)}</td><td>${esc(r.realName)}</td><td>${number(r.practiceCount)}</td><td>${number(r.answerCount)}</td><td>${pct(r.accuracy)}${bar(r.accuracy)}</td><td><a href="/admin/student-detail.html${query({id:r.studentId,courseId:$('#course').value})}">查看学生 →</a></td></tr>`)):empty('还没有学生账号','先到学生管理创建账号。');pagination($('#pagination'),data.total,page,pageSize,p=>{page=p;studentRows().catch(e=>toast(e.message));},size=>{pageSize=size;page=1;studentRows().catch(e=>toast(e.message));});}
+ async function load(){const rows=await api('/admin/knowledge-analysis'+query({courseId:$('#course').value}));$('#knowledge-list').innerHTML=adminKnowledge(rows);await studentRows();}
+ $('#course').onchange=()=>{page=1;load().catch(e=>toast(e.message));};await load();if(location.hash)requestAnimationFrame(()=>document.getElementById(location.hash.slice(1))?.scrollIntoView());
+}
+async function students(){
+ let page=1,pageSize=10;
+ $('#main').innerHTML=heading('STUDENT MANAGEMENT','学生管理','统一创建账号，学号即登录账号，学生仅能访问自己的数据。','<button id="create-student">＋ 创建学生账号</button>')+`<div class="card"><form class="filters" id="search-form"><label for="keyword" class="visually-hidden">学号或姓名</label><input id="keyword" placeholder="搜索学号或姓名" maxlength="50"><label for="enabled" class="visually-hidden">账号状态</label><select id="enabled"><option value="">全部状态</option><option value="1">启用中</option><option value="0">已停用</option></select><button class="secondary" type="submit">查询</button></form><div id="student-list"></div><div id="pagination"></div></div><dialog id="new-dialog" aria-labelledby="new-title"><h2 id="new-title">创建学生账号</h2><form id="new-student"><div class="field"><label for="new-username">学生学号</label><input id="new-username" required pattern="[0-9]{1,32}" maxlength="32" inputmode="numeric"><small>仅限数字，保留学号前导零。</small></div><div class="field"><label for="new-name">学生姓名</label><input id="new-name" required maxlength="50"></div><div class="notice">默认密码为 123456，学生可自行选择是否修改。</div><div class="modal-actions"><button class="secondary" type="button" id="cancel-new">取消</button><button type="submit">创建账号</button></div></form></dialog>`;
+ async function load(){const data=await api('/admin/students'+query({keyword:$('#keyword').value.trim(),enabled:$('#enabled').value,page,pageSize}));$('#student-list').innerHTML=data.rows.length?table(['学号','姓名','状态','创建时间','操作'],data.rows.map(r=>`<tr><td><strong>${esc(r.username)}</strong></td><td>${esc(r.realName)}</td><td><span class="badge ${r.enabled?'good':'weak'}">${r.enabled?'启用中':'已停用'}</span></td><td>${esc(time(r.createdAt))}</td><td><div class="row"><a href="/admin/student-detail.html?id=${esc(r.id)}">学习详情</a><button class="text small" data-reset="${esc(r.id)}" data-name="${esc(r.realName)}">重置密码</button><button class="text small" data-status="${esc(r.id)}" data-enabled="${r.enabled}" data-name="${esc(r.realName)}">${r.enabled?'停用':'启用'}</button></div></td></tr>`)):empty('没有匹配的学生','调整筛选条件，或创建一个新的学生账号。');pagination($('#pagination'),data.total,page,pageSize,p=>{page=p;load().catch(e=>toast(e.message));},size=>{pageSize=size;page=1;load().catch(e=>toast(e.message));});
+ $('#student-list').querySelectorAll('[data-reset]').forEach(b=>b.onclick=()=>{if(confirm(`将“${b.dataset.name}”的密码重置为 123456？现有登录会失效，下次可使用 123456 直接登录。`))busy(b,async()=>{await api(`/admin/students/${b.dataset.reset}/reset-password`,{method:'POST'});toast('密码已重置为 123456');});});
+ $('#student-list').querySelectorAll('[data-status]').forEach(b=>b.onclick=()=>{const enabled=b.dataset.enabled!=='true';if(confirm(`确定${enabled?'启用':'停用'}“${b.dataset.name}”的账号吗？${enabled?'':'现有登录将失效，学习记录保留。'}`))busy(b,async()=>{await api(`/admin/students/${b.dataset.status}/status`,{method:'PUT',body:{enabled}});toast(enabled?'账号已启用':'账号已停用');await load();});});}
+ $('#search-form').onsubmit=e=>{e.preventDefault();page=1;load().catch(e=>toast(e.message));};$('#create-student').onclick=()=>$('#new-dialog').showModal();$('#cancel-new').onclick=()=>$('#new-dialog').close();
+ $('#new-student').onsubmit=e=>{e.preventDefault();const name=$('#new-name').value.trim();if(!name)return toast('请填写学生姓名');busy($('button[type=submit]',e.target),async()=>{await api('/admin/students',{method:'POST',body:{username:$('#new-username').value.trim(),realName:name}});$('#new-dialog').close();e.target.reset();toast('学生账号已创建，初始密码为 123456');page=1;await load();});};await load();
+}
+async function studentDetail(){
+ const params=new URLSearchParams(location.search),id=params.get('id');if(!id)throw new Error('缺少学生编号');const base=`/admin/students/${encodeURIComponent(id)}`;
+ const [student,courses]=await Promise.all([api(base),api('/courses')]);let tab=['overview','history','wrong'].includes(params.get('tab'))?params.get('tab'):'overview',page=1,pageSize=10;
+ $('#main').innerHTML=heading('STUDENT INSIGHTS',student.realName+'的学习情况',`学号 ${student.username} · ${student.enabled?'账号启用中':'账号已停用'}`,`<a class="button secondary" href="/admin/students.html">← 学生列表</a>`)+`<div class="filters"><label class="muted" for="course">当前课程</label><select id="course">${courseOptions(courses)}</select><span class="muted small-text">查看权限为只读，不能修改学生答案或成绩。</span></div><div id="detail-stats"></div><div class="spacer"></div><div class="tabs" role="tablist"><button data-tab="overview" class="active" role="tab" aria-selected="true">知识点与趋势</button><button data-tab="history" role="tab" aria-selected="false">练习记录</button><button data-tab="wrong" role="tab" aria-selected="false">错题回顾</button></div><div id="detail-content"></div>`;
+ $('#course').value=params.get('courseId')||courses[0]?.id;
+ async function load(){const courseId=$('#course').value,summary=await api(base+'/summary'),course=summary.find(c=>c.courseId===courseId);$('#detail-stats').innerHTML=stats([{label:'已完成练习',value:number(course?.practiceCount),unit:'次',note:'查看当前课程练习记录 →',href:'/admin/student-detail.html'+query({id,courseId,tab:'history'})+'#detail-content'},{label:'累计作答',value:number(course?.answerCount),unit:'题次',note:`累计答对 ${number(course?.correctCount)} 题 · 查看记录 →`,href:'/admin/student-detail.html'+query({id,courseId,tab:'history'})+'#detail-content'},{label:'累计正确率',value:pct(course?.accuracy),note:'查看知识点与趋势 →',href:'/admin/student-detail.html'+query({id,courseId,tab:'overview'})+'#detail-content'}]);
+ if(tab==='overview'){const [rows,trend]=await Promise.all([api(base+'/knowledge-analysis'+query({courseId})),api(base+'/trend'+query({courseId}))]);$('#detail-content').innerHTML=`<div class="card"><h2>个人知识点掌握情况</h2><p class="muted small-text">每题取最近一次作答，至少 3 道不同题才判断等级。</p>${adminKnowledge(rows,true)}</div><div class="card"><h2>练习正确率趋势</h2>${trendChart(trend)}</div>`;}
+ else if(tab==='history'){const data=await api(base+'/practices'+query({courseId,page,pageSize}));$('#detail-content').innerHTML=`<div class="card">${data.rows.length?historyTable(data.rows):empty('还没有练习记录','该学生尚未提交当前课程的练习。')}<div id="pagination"></div></div>`;pagination($('#pagination'),data.total,page,pageSize,p=>{page=p;load().catch(e=>toast(e.message));},size=>{pageSize=size;page=1;load().catch(e=>toast(e.message));});}
+ else{const data=await api(base+'/wrong-questions'+query({courseId,page,pageSize}));$('#detail-content').innerHTML=`<div class="card">${data.rows.length?table(['题目','历史错误次数','最近状态','回顾'],data.rows.map(r=>`<tr><td class="table-stem">${esc(r.stem)}</td><td>${number(r.wrongCount)}</td><td><span class="badge ${r.latestCorrect?'good':'weak'}">${r.latestCorrect?'最近已答对':'仍需复习'}</span></td><td><a href="/practice-result.html?id=${esc(r.lastWrongPracticeId)}#item-${esc(r.lastWrongItemId)}">查看解析 →</a></td></tr>`)):empty('当前课程没有错题','完成练习后的错误题目将在这里展示。')}<div id="pagination"></div></div>`;pagination($('#pagination'),data.total,page,pageSize,p=>{page=p;load().catch(e=>toast(e.message));},size=>{pageSize=size;page=1;load().catch(e=>toast(e.message));});}}
+ function syncTab(){
+  document.querySelectorAll('[data-tab]').forEach(b=>{const active=b.dataset.tab===tab;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));});
+  const url=new URL(location.href);url.searchParams.set('courseId',$('#course').value);url.searchParams.set('tab',tab);window.history.replaceState(null,'',url);
+ }
+ async function selectTab(next,scroll=false){
+  tab=next;page=1;syncTab();await load();
+  if(scroll){const url=new URL(location.href);url.hash='detail-content';window.history.replaceState(null,'',url);$('#detail-content').scrollIntoView();}
+ }
+ $('#detail-stats').onclick=e=>{
+  const link=e.target.closest('a.stat-link');
+  if(!link||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;
+  const next=new URL(link.href).searchParams.get('tab');
+  if(!['overview','history'].includes(next))return;
+  e.preventDefault();selectTab(next,true).catch(e=>toast(e.message));
+ };
+ $('#course').onchange=()=>{page=1;syncTab();load().catch(e=>toast(e.message));};
+ document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>selectTab(b.dataset.tab).catch(e=>toast(e.message)));
+ syncTab();await load();if(location.hash)requestAnimationFrame(()=>document.getElementById(location.hash.slice(1))?.scrollIntoView());
+}

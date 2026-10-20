@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.edu.learning.mapper.CourseMapper">
+ <select id="courses" resultType="map">SELECT CAST(c.id AS CHAR) id,c.name,c.description,(SELECT COUNT(*) FROM question q JOIN chapter ch ON ch.id=q.chapter_id WHERE ch.course_id=c.id AND ch.is_current=1) questionCount FROM course c ORDER BY c.sort_order,c.id</select>
+ <select id="chapters" resultType="map">SELECT CAST(c.id AS CHAR) id,c.name,(SELECT COUNT(*) FROM question q WHERE q.chapter_id=c.id) questionCount FROM chapter c WHERE c.course_id=#{courseId} AND c.is_current=1 ORDER BY c.sort_order,c.id</select>
+ <select id="knowledge" resultType="map">SELECT CAST(k.id AS CHAR) id,CAST(k.chapter_id AS CHAR) chapterId,k.name,(SELECT COUNT(*) FROM question_knowledge qk WHERE qk.knowledge_id=k.id) questionCount FROM knowledge_point k JOIN chapter c ON c.id=k.chapter_id WHERE c.course_id=#{courseId} AND c.is_current=1<if test="chapterId != null"> AND c.id=#{chapterId}</if> ORDER BY c.sort_order,k.sort_order,k.id</select>
+ <select id="courseExists" resultType="int">SELECT COUNT(*) FROM course WHERE id=#{id}</select>
+ <select id="chapterMatches" resultType="int">SELECT COUNT(*) FROM chapter WHERE id=#{chapterId} AND course_id=#{courseId} AND is_current=1</select>
+ <select id="knowledgeMatches" resultType="int">SELECT COUNT(*) FROM knowledge_point k JOIN chapter c ON c.id=k.chapter_id WHERE k.id=#{knowledgeId} AND c.course_id=#{courseId} AND c.is_current=1<if test="chapterId != null"> AND c.id=#{chapterId}</if></select>
+</mapper>

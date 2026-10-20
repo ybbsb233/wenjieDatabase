@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.edu.learning.mapper.LearningMapper">
+ <select id="summary" resultType="map">
+ SELECT CAST(c.id AS CHAR) courseId,c.name courseName,COUNT(p.id) practiceCount,COUNT(DISTINCT p.student_id) participantCount,
+ COALESCE(SUM(p.question_count),0) answerCount,COALESCE(SUM(p.correct_count),0) correctCount,
+ ROUND(SUM(p.correct_count)*100.0/NULLIF(SUM(p.question_count),0),1) accuracy
+ FROM course c LEFT JOIN practice p ON p.course_id=c.id AND p.status='SUBMITTED' AND p.archived=0<if test="studentId != null"> AND p.student_id=#{studentId}</if>
+ GROUP BY c.id,c.name,c.sort_order ORDER BY c.sort_order,c.id
+ </select>
+ <sql id="recent">WITH ranked AS (
+ SELECT i.*,p.student_id,p.submitted_at,ROW_NUMBER() OVER(PARTITION BY p.student_id,i.question_id ORDER BY p.submitted_at DESC,p.id DESC,i.id DESC) rn
+ FROM practice_item i JOIN practice p ON p.id=i.practice_id WHERE p.status='SUBMITTED' AND p.archived=0<if test="studentId != null"> AND p.student_id=#{studentId}</if>
+ )</sql>
+ <select id="knowledge" resultType="map">
+ <include refid="recent"/>
+ SELECT CAST(k.id AS CHAR) knowledgeId,CONCAT(k.name,CASE WHEN ch.is_current=0 THEN '（旧题库）' ELSE '' END) knowledgeName,CAST(k.chapter_id AS CHAR) chapterId,
+ COUNT(DISTINCT qk.question_id) bankCount,COUNT(r.id) questionCount,COALESCE(SUM(r.is_correct),0) correctCount,COUNT(DISTINCT r.student_id) participantCount
+ FROM knowledge_point k JOIN chapter ch ON ch.id=k.chapter_id
+ LEFT JOIN question_knowledge qk ON qk.knowledge_id=k.id LEFT JOIN ranked r ON r.question_id=qk.question_id AND r.rn=1
+ WHERE ch.course_id=#{courseId} GROUP BY k.id,k.name,k.chapter_id,ch.sort_order,k.sort_order,ch.is_current HAVING ch.is_current=1 OR COUNT(r.id)>0 ORDER BY ch.sort_order,k.sort_order,k.id
+ </select>
+ <select id="trend" resultType="map">SELECT CAST(id AS CHAR) practiceId,question_count questionCount,correct_count correctCount,ROUND(correct_count*100.0/question_count,1) accuracy,submitted_at submittedAt FROM practice WHERE student_id=#{studentId} AND course_id=#{courseId} AND status='SUBMITTED' AND archived=0 ORDER BY submitted_at DESC,id DESC LIMIT 20</select>
+ <sql id="wrongCte">WITH history AS (
+ SELECT i.*,p.course_id,p.submitted_at,
+ ROW_NUMBER() OVER(PARTITION BY i.question_id ORDER BY p.submitted_at DESC,p.id DESC,i.id DESC) recentRank
+ FROM practice_item i JOIN practice p ON p.id=i.practice_id WHERE p.student_id=#{studentId} AND p.status='SUBMITTED' AND p.archived=0
+ ), errors AS (
+ SELECT h.*,ROW_NUMBER() OVER(PARTITION BY h.question_id ORDER BY h.submitted_at DESC,h.practice_id DESC,h.id DESC) errorRank,
+ COUNT(*) OVER(PARTITION BY h.question_id) wrongCount FROM history h WHERE h.is_correct=0
+ )</sql>
+ <sql id="wrongFrom">FROM errors e JOIN question q ON q.id=e.question_id JOIN history latest ON latest.question_id=e.question_id AND latest.recentRank=1
+ WHERE e.errorRank=1<if test="courseId != null"> AND e.course_id=#{courseId}</if><if test="knowledgeId != null"> AND EXISTS(SELECT 1 FROM question_knowledge qk WHERE qk.question_id=q.id AND qk.knowledge_id=#{knowledgeId})</if></sql>
+ <select id="wrong" resultType="map"><include refid="wrongCte"/> SELECT CAST(q.id AS CHAR) questionId,q.stem,e.wrongCount,latest.is_correct latestCorrect,CAST(e.practice_id AS CHAR) lastWrongPracticeId,CAST(e.id AS CHAR) lastWrongItemId <include refid="wrongFrom"/> ORDER BY e.submitted_at DESC,e.practice_id DESC,e.id DESC LIMIT #{limit} OFFSET #{offset}</select>
+ <select id="wrongCount" resultType="long"><include refid="wrongCte"/> SELECT COUNT(*) <include refid="wrongFrom"/></select>
+ <select id="courseStudents" resultType="map">SELECT CAST(u.id AS CHAR) studentId,u.username,u.real_name realName,COUNT(p.id) practiceCount,COALESCE(SUM(p.question_count),0) answerCount,COALESCE(SUM(p.correct_count),0) correctCount,ROUND(SUM(p.correct_count)*100.0/NULLIF(SUM(p.question_count),0),1) accuracy
+ FROM app_user u LEFT JOIN practice p ON p.student_id=u.id AND p.course_id=#{courseId} AND p.status='SUBMITTED' AND p.archived=0 WHERE u.role='STUDENT'
+ GROUP BY u.id,u.username,u.real_name ORDER BY u.username LIMIT #{limit} OFFSET #{offset}</select>
+</mapper>

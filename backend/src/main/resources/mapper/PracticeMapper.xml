@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.edu.learning.mapper.PracticeMapper">
+ <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO practice(student_id,course_id,chapter_id,source_type,question_count) VALUES(#{studentId},#{courseId},#{chapterId},#{sourceType},#{questionCount})</insert>
+ <insert id="insertItem">INSERT INTO practice_item(practice_id,question_id,order_no,option_order) VALUES(#{practiceId},#{questionId},#{orderNo},#{optionOrder})</insert>
+ <sql id="row">id,student_id,course_id,chapter_id,source_type,status,question_count,correct_count,started_at,submitted_at</sql>
+ <select id="byId" resultType="cn.edu.learning.pojo.Models$Practice">SELECT <include refid="row"/> FROM practice WHERE id=#{id}</select>
+ <select id="lock" resultType="cn.edu.learning.pojo.Models$Practice">SELECT <include refid="row"/> FROM practice WHERE id=#{id} FOR UPDATE</select>
+ <select id="items" resultType="cn.edu.learning.pojo.Models$Item">SELECT id,practice_id,question_id,order_no,option_order,selected_answer,is_correct FROM practice_item WHERE practice_id=#{practiceId} ORDER BY order_no</select>
+ <update id="answer">UPDATE practice_item SET selected_answer=#{answer},is_correct=#{correct} WHERE id=#{id}</update>
+ <update id="finish">UPDATE practice SET correct_count=#{correct},submitted_at=CURRENT_TIMESTAMP(3),status='SUBMITTED' WHERE id=#{id}</update>
+ <sql id="historyWhere">WHERE p.student_id=#{studentId} AND p.archived=0 AND p.status='SUBMITTED'<if test="courseId != null"> AND p.course_id=#{courseId}</if></sql>
+ <select id="history" resultType="map">SELECT CAST(p.id AS CHAR) practiceId,CAST(p.course_id AS CHAR) courseId,c.name courseName,ch.name chapterName,p.source_type sourceType,p.question_count questionCount,p.correct_count correctCount,ROUND(p.correct_count*100.0/p.question_count,1) accuracy,p.submitted_at submittedAt FROM practice p JOIN course c ON c.id=p.course_id LEFT JOIN chapter ch ON ch.id=p.chapter_id <include refid="historyWhere"/> ORDER BY p.submitted_at DESC,p.id DESC LIMIT #{limit} OFFSET #{offset}</select>
+ <select id="historyCount" resultType="long">SELECT COUNT(*) FROM practice p <include refid="historyWhere"/></select>
+ <sql id="allHistoryWhere">WHERE p.archived=0 AND p.status='SUBMITTED'<if test="studentId != null"> AND p.student_id=#{studentId}</if><if test="courseId != null"> AND p.course_id=#{courseId}</if></sql>
+ <select id="allHistory" resultType="map">
+ SELECT CAST(p.id AS CHAR) practiceId,CAST(p.student_id AS CHAR) studentId,u.username,u.real_name studentName,
+ CAST(p.course_id AS CHAR) courseId,c.name courseName,ch.name chapterName,p.source_type sourceType,
+ p.question_count questionCount,p.correct_count correctCount,ROUND(p.correct_count*100.0/p.question_count,1) accuracy,p.submitted_at submittedAt
+ FROM practice p JOIN app_user u ON u.id=p.student_id JOIN course c ON c.id=p.course_id LEFT JOIN chapter ch ON ch.id=p.chapter_id
+ <include refid="allHistoryWhere"/> ORDER BY p.submitted_at DESC,p.id DESC LIMIT #{limit} OFFSET #{offset}
+ </select>
+ <select id="allHistoryCount" resultType="long">SELECT COUNT(*) FROM practice p <include refid="allHistoryWhere"/></select>
+ <select id="chapterTitle" resultType="string">SELECT name FROM chapter WHERE id=#{chapterId}</select>
+ <select id="chapterSets" resultType="map">
+ WITH attempts AS (SELECT p.*,COUNT(*) OVER(PARTITION BY chapter_id) attemptCount,
+ ROW_NUMBER() OVER(PARTITION BY chapter_id ORDER BY submitted_at DESC,id DESC) rn
+ FROM practice p WHERE p.student_id=#{studentId} AND p.source_type='CHAPTER' AND p.status='SUBMITTED' AND p.archived=0)
+ SELECT CAST(ch.id AS CHAR) chapterId,ch.name chapterName,ch.sort_order chapterNo,
+ (SELECT COUNT(*) FROM question q WHERE q.chapter_id=ch.id) questionCount,
+ COALESCE(a.attemptCount,0) completedAttempts,CAST(a.id AS CHAR) latestPracticeId,
+ a.correct_count latestCorrectCount,ROUND(a.correct_count*100.0/a.question_count,1) latestAccuracy,a.submitted_at lastSubmittedAt
+ FROM chapter ch LEFT JOIN attempts a ON a.chapter_id=ch.id AND a.rn=1
+ WHERE ch.course_id=#{courseId} AND ch.is_current=1 ORDER BY ch.sort_order,ch.id
+ </select>
+</mapper>

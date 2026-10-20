@@ -1,0 +1,19 @@
+backend/target/
+backend/application-local.yml
+backend/.env
+*.log
+.idea/
+*.iml
+.local/
+
+/target/
+/archive/
+__pycache__/
+*.pyc
+
+# Deployment credentials and private keys
+.env
+.env.*
+!.env.example
+*.pem
+*.key
