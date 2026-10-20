@@ -17,3 +17,7 @@ __pycache__/
 !.env.example
 *.pem
 *.key
+target/
+*.py[cod]
+Thumbs.db
+.DS_Store

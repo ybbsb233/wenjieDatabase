@@ -15,8 +15,8 @@ for path,page in pages.items():
   <meta name="description" content="多课程学习练习与知识点薄弱项分析">
   <title>知序学习 · 学习薄弱项分析系统</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/assets/css/common.css?v=20261019-admin-links-8">
-  <script type="module" src="/assets/js/app.js?v=20261019-admin-links-8"></script>
+  <link rel="stylesheet" href="/assets/css/common.css?v=20261020-navigation-1">
+  <script type="module" src="/assets/js/app.js?v=20261020-navigation-1"></script>
 </head>
 <body data-page="{page}"><div class="loading">正在加载学习空间…</div><noscript>请启用 JavaScript 后使用本网站。</noscript></body>
 </html>

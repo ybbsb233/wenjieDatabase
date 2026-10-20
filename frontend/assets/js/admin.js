@@ -1,6 +1,7 @@
-import {api,query} from './api.js?v=20261020-chart-spacing-1';
-import {$,esc,pct,time,number,empty,toast,busy,heading,stats,table,pagination,courseOptions,bar,trendChart,badge} from './common.js?v=20261020-chart-spacing-1';
-import {historyTable} from './student.js?v=20261020-chart-spacing-1';
+import {viewRoot,cancelled,setLocalNavigation} from './navigation.js?v=20261020-navigation-1';
+import {api,query} from './api.js?v=20261020-navigation-1';
+import {$,esc,pct,time,number,empty,toast,busy,heading,stats,table,pagination,courseOptions,bar,trendChart,badge} from './common.js?v=20261020-navigation-1';
+import {historyTable} from './student.js?v=20261020-navigation-1';
 
 export async function adminPage(page){const pages={dashboard,students,'admin-courses':adminCourses,'admin-practices':adminPractices,'student-detail':studentDetail};if(pages[page])await pages[page]();}
 
@@ -41,7 +42,7 @@ async function dashboard(){
  $('#course').value=new URLSearchParams(location.search).get('courseId')||courses[0]?.id;
  async function studentRows(){const data=await api('/admin/course-students'+query({courseId:$('#course').value,page,pageSize}));$('#student-list').innerHTML=data.rows.length?table(['学号','姓名','练习次数','累计题量','正确率','详情'],data.rows.map(r=>`<tr><td>${esc(r.username)}</td><td>${esc(r.realName)}</td><td>${number(r.practiceCount)}</td><td>${number(r.answerCount)}</td><td>${pct(r.accuracy)}${bar(r.accuracy)}</td><td><a href="/admin/student-detail.html${query({id:r.studentId,courseId:$('#course').value})}">查看学生 →</a></td></tr>`)):empty('还没有学生账号','先到学生管理创建账号。');pagination($('#pagination'),data.total,page,pageSize,p=>{page=p;studentRows().catch(e=>toast(e.message));},size=>{pageSize=size;page=1;studentRows().catch(e=>toast(e.message));});}
  async function load(){const rows=await api('/admin/knowledge-analysis'+query({courseId:$('#course').value}));$('#knowledge-list').innerHTML=adminKnowledge(rows);await studentRows();}
- $('#course').onchange=()=>{page=1;load().catch(e=>toast(e.message));};await load();if(location.hash)requestAnimationFrame(()=>document.getElementById(location.hash.slice(1))?.scrollIntoView());
+ $('#course').onchange=()=>{page=1;load().catch(e=>toast(e.message));};await load();
 }
 async function students(){
  let page=1,pageSize=10;
@@ -54,29 +55,24 @@ async function students(){
 }
 async function studentDetail(){
  const params=new URLSearchParams(location.search),id=params.get('id');if(!id)throw new Error('缺少学生编号');const base=`/admin/students/${encodeURIComponent(id)}`;
- const [student,courses]=await Promise.all([api(base),api('/courses')]);let tab=['overview','history','wrong'].includes(params.get('tab'))?params.get('tab'):'overview',page=1,pageSize=10;
+ const [student,courses,summary]=await Promise.all([api(base),api('/courses'),api(base+'/summary')]);let statsCourse;let tab=['overview','history','wrong'].includes(params.get('tab'))?params.get('tab'):'overview',committedTab=tab,page=1,pageSize=10;
  $('#main').innerHTML=heading('STUDENT INSIGHTS',student.realName+'的学习情况',`学号 ${student.username} · ${student.enabled?'账号启用中':'账号已停用'}`,`<a class="button secondary" href="/admin/students.html">← 学生列表</a>`)+`<div class="filters"><label class="muted" for="course">当前课程</label><select id="course">${courseOptions(courses)}</select><span class="muted small-text">查看权限为只读，不能修改学生答案或成绩。</span></div><div id="detail-stats"></div><div class="spacer"></div><div class="tabs" role="tablist"><button data-tab="overview" class="active" role="tab" aria-selected="true">知识点与趋势</button><button data-tab="history" role="tab" aria-selected="false">练习记录</button><button data-tab="wrong" role="tab" aria-selected="false">错题回顾</button></div><div id="detail-content"></div>`;
  $('#course').value=params.get('courseId')||courses[0]?.id;
- async function load(){const courseId=$('#course').value,summary=await api(base+'/summary'),course=summary.find(c=>c.courseId===courseId);$('#detail-stats').innerHTML=stats([{label:'已完成练习',value:number(course?.practiceCount),unit:'次',note:'查看当前课程练习记录 →',href:'/admin/student-detail.html'+query({id,courseId,tab:'history'})+'#detail-content'},{label:'累计作答',value:number(course?.answerCount),unit:'题次',note:`累计答对 ${number(course?.correctCount)} 题 · 查看记录 →`,href:'/admin/student-detail.html'+query({id,courseId,tab:'history'})+'#detail-content'},{label:'累计正确率',value:pct(course?.accuracy),note:'查看知识点与趋势 →',href:'/admin/student-detail.html'+query({id,courseId,tab:'overview'})+'#detail-content'}]);
+ async function load(){const courseId=$('#course').value,course=summary.find(c=>c.courseId===courseId);
  if(tab==='overview'){const [rows,trend]=await Promise.all([api(base+'/knowledge-analysis'+query({courseId})),api(base+'/trend'+query({courseId}))]);$('#detail-content').innerHTML=`<div class="card"><h2>个人知识点掌握情况</h2><p class="muted small-text">每题取最近一次作答，至少 3 道不同题才判断等级。</p>${adminKnowledge(rows,true)}</div><div class="card"><h2>练习正确率趋势</h2>${trendChart(trend)}</div>`;}
  else if(tab==='history'){const data=await api(base+'/practices'+query({courseId,page,pageSize}));$('#detail-content').innerHTML=`<div class="card">${data.rows.length?historyTable(data.rows):empty('还没有练习记录','该学生尚未提交当前课程的练习。')}<div id="pagination"></div></div>`;pagination($('#pagination'),data.total,page,pageSize,p=>{page=p;load().catch(e=>toast(e.message));},size=>{pageSize=size;page=1;load().catch(e=>toast(e.message));});}
- else{const data=await api(base+'/wrong-questions'+query({courseId,page,pageSize}));$('#detail-content').innerHTML=`<div class="card">${data.rows.length?table(['题目','历史错误次数','最近状态','回顾'],data.rows.map(r=>`<tr><td class="table-stem">${esc(r.stem)}</td><td>${number(r.wrongCount)}</td><td><span class="badge ${r.latestCorrect?'good':'weak'}">${r.latestCorrect?'最近已答对':'仍需复习'}</span></td><td><a href="/practice-result.html?id=${esc(r.lastWrongPracticeId)}#item-${esc(r.lastWrongItemId)}">查看解析 →</a></td></tr>`)):empty('当前课程没有错题','完成练习后的错误题目将在这里展示。')}<div id="pagination"></div></div>`;pagination($('#pagination'),data.total,page,pageSize,p=>{page=p;load().catch(e=>toast(e.message));},size=>{pageSize=size;page=1;load().catch(e=>toast(e.message));});}}
- function syncTab(){
-  document.querySelectorAll('[data-tab]').forEach(b=>{const active=b.dataset.tab===tab;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));});
-  const url=new URL(location.href);url.searchParams.set('courseId',$('#course').value);url.searchParams.set('tab',tab);window.history.replaceState(null,'',url);
+ else{const data=await api(base+'/wrong-questions'+query({courseId,page,pageSize}));$('#detail-content').innerHTML=`<div class="card">${data.rows.length?table(['题目','历史错误次数','最近状态','回顾'],data.rows.map(r=>`<tr><td class="table-stem">${esc(r.stem)}</td><td>${number(r.wrongCount)}</td><td><span class="badge ${r.latestCorrect?'good':'weak'}">${r.latestCorrect?'最近已答对':'仍需复习'}</span></td><td><a href="/practice-result.html?id=${esc(r.lastWrongPracticeId)}#item-${esc(r.lastWrongItemId)}">查看解析 →</a></td></tr>`)):empty('当前课程没有错题','完成练习后的错误题目将在这里展示。')}<div id="pagination"></div></div>`;pagination($('#pagination'),data.total,page,pageSize,p=>{page=p;load().catch(e=>toast(e.message));},size=>{pageSize=size;page=1;load().catch(e=>toast(e.message));});}
+ if(statsCourse!==courseId){statsCourse=courseId;$('#detail-stats').innerHTML=stats([{label:'已完成练习',value:number(course?.practiceCount),unit:'次',note:'查看当前课程练习记录 →',href:'/admin/student-detail.html'+query({id,courseId,tab:'history'})+'#detail-content'},{label:'累计作答',value:number(course?.answerCount),unit:'题次',note:`累计答对 ${number(course?.correctCount)} 题 · 查看记录 →`,href:'/admin/student-detail.html'+query({id,courseId,tab:'history'})+'#detail-content'},{label:'累计正确率',value:pct(course?.accuracy),note:'查看知识点与趋势 →',href:'/admin/student-detail.html'+query({id,courseId,tab:'overview'})+'#detail-content'}]);}}
+ function selectTab(){viewRoot().querySelectorAll('[data-tab]').forEach(b=>{const active=b.dataset.tab===tab;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));});}
+ async function switchDetail(url){
+  if(url.searchParams.get('id')!==id)return false;
+  const previousTab=committedTab,previousCourse=statsCourse;
+  tab=['overview','history','wrong'].includes(url.searchParams.get('tab'))?url.searchParams.get('tab'):'overview';
+  $('#course').value=url.searchParams.get('courseId')||courses[0]?.id;page=1;
+  $('#detail-content').setAttribute('aria-busy','true');
+  try{await load();committedTab=tab;selectTab();return true;}catch(error){if(cancelled(error))throw error;tab=previousTab;$('#course').value=previousCourse;selectTab();throw error;}finally{$('#detail-content')?.removeAttribute('aria-busy');}
  }
- async function selectTab(next,scroll=false){
-  tab=next;page=1;syncTab();await load();
-  if(scroll){const url=new URL(location.href);url.hash='detail-content';window.history.replaceState(null,'',url);$('#detail-content').scrollIntoView();}
- }
- $('#detail-stats').onclick=e=>{
-  const link=e.target.closest('a.stat-link');
-  if(!link||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;
-  const next=new URL(link.href).searchParams.get('tab');
-  if(!['overview','history'].includes(next))return;
-  e.preventDefault();selectTab(next,true).catch(e=>toast(e.message));
- };
- $('#course').onchange=()=>{page=1;syncTab();load().catch(e=>toast(e.message));};
- document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>selectTab(b.dataset.tab).catch(e=>toast(e.message)));
- syncTab();await load();if(location.hash)requestAnimationFrame(()=>document.getElementById(location.hash.slice(1))?.scrollIntoView());
+ $('#course').onchange=()=>{const url=new URL(location.href);url.searchParams.set('courseId',$('#course').value);url.searchParams.set('tab',tab);window.dispatchEvent(new CustomEvent('app:navigate',{detail:{url:url.href}}));};
+ viewRoot().querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{const url=new URL(location.href);url.searchParams.set('tab',b.dataset.tab);url.searchParams.set('courseId',$('#course').value);window.dispatchEvent(new CustomEvent('app:navigate',{detail:{url:url.href}}));});
+ selectTab();await load();setLocalNavigation(switchDetail);
 }

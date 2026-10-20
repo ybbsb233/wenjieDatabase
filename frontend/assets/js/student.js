@@ -1,9 +1,11 @@
-import {api,query} from './api.js?v=20261020-chart-spacing-1';
-import {$,esc,pct,time,number,kinds,badge,empty,toast,busy,heading,stats,table,pagination,courseOptions,bar,trendChart} from './common.js?v=20261020-chart-spacing-1';
+import {viewRoot,setLocalNavigation,go,setLeaveGuard,updateQuery} from './navigation.js?v=20261020-navigation-1';
+import {api,query} from './api.js?v=20261020-navigation-1';
+import {$,esc,pct,time,number,kinds,badge,empty,toast,busy,heading,stats,table,pagination,courseOptions,bar,trendChart} from './common.js?v=20261020-navigation-1';
 
-const params=new URLSearchParams(location.search);
+let params;
 const courseIcons=['∫','▤','⌘','⌗','⌁'];
 export async function studentPage(page){
+ params=new URLSearchParams(location.search);
  const pages={home,courses,practice,answer,history,wrong,analysis};
  if(pages[page])await pages[page]();
 }
@@ -33,7 +35,7 @@ async function practice(){
  await loadCourse();
  if(params.get('chapterId'))chapter.value=params.get('chapterId');
  await loadPoints(params.get('knowledgeId')||'');
- $('#start-form').onsubmit=e=>{e.preventDefault();busy($('button[type=submit]',e.target),async()=>{const created=await api('/student/practices',{method:'POST',body:{courseId:course.value,chapterId:chapter.value||null,knowledgeId:knowledge.value||null,count:Number($('#count').value)}});if(created.actualCount<created.requestedCount)sessionStorage.setItem('practice-notice',`可用题目不足，本次实际出题 ${created.actualCount} 道。`);location.href='/student/answer.html?id='+encodeURIComponent(created.practiceId);});};
+ $('#start-form').onsubmit=e=>{e.preventDefault();busy($('button[type=submit]',e.target),async()=>{const created=await api('/student/practices',{method:'POST',body:{courseId:course.value,chapterId:chapter.value||null,knowledgeId:knowledge.value||null,count:Number($('#count').value)}});if(created.actualCount<created.requestedCount)sessionStorage.setItem('practice-notice',`可用题目不足，本次实际出题 ${created.actualCount} 道。`);go('/student/answer.html?id='+encodeURIComponent(created.practiceId));});};
  const fixedCourse=$('#fixed-course');
  fixedCourse.value=course.value;
  async function loadFixed(){
@@ -41,36 +43,37 @@ async function practice(){
   $('#fixed-list').innerHTML=sets.map(c=>`<article class="card chapter-set"><div class="card-header"><span class="badge">第 ${c.chapterNo} 章</span><span class="badge ${c.completedAttempts?'good':''}">${c.completedAttempts?'已完成':'待练习'}</span></div><h2>${esc(c.chapterName)}</h2><p class="muted small-text">固定 ${c.questionCount} 题 · 已完成 ${c.completedAttempts} 次</p><div class="chapter-set-footer"><span class="small-text">${c.completedAttempts?`最近得分 <strong>${c.latestCorrectCount} / ${c.questionCount}</strong> · ${pct(c.latestAccuracy)}`:'完成整章练习，覆盖本章全部知识点'}</span><div class="row">${c.latestPracticeId?`<a href="/practice-result.html?id=${esc(c.latestPracticeId)}">查看结果</a>`:''}<button class="small" data-chapter="${esc(c.chapterId)}">${c.completedAttempts?'再次练习':'开始练习'} →</button></div></div></article>`).join('');
   $('#fixed-list').querySelectorAll('[data-chapter]').forEach(b=>b.onclick=()=>busy(b,async()=>{
    const created=await api('/student/practices/chapters/'+b.dataset.chapter,{method:'POST'});
-   location.href='/student/answer.html?id='+encodeURIComponent(created.practiceId);
+   go('/student/answer.html?id='+encodeURIComponent(created.practiceId));
   }));
  }
  function showMode(mode){
   $('#fixed-mode').hidden=mode!=='fixed';$('#random-mode').hidden=mode!=='random';
-  document.querySelectorAll('[data-practice-mode]').forEach(b=>{const active=b.dataset.practiceMode===mode;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));});
+  viewRoot().querySelectorAll('[data-practice-mode]').forEach(b=>{const active=b.dataset.practiceMode===mode;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));});
  }
- document.querySelectorAll('[data-practice-mode]').forEach(b=>b.onclick=()=>showMode(b.dataset.practiceMode));
+ viewRoot().querySelectorAll('[data-practice-mode]').forEach(b=>b.onclick=()=>{showMode(b.dataset.practiceMode);updateQuery({mode:b.dataset.practiceMode});});
  fixedCourse.onchange=()=>loadFixed().catch(e=>toast(e.message));
  showMode(params.has('knowledgeId')||params.has('chapterId')||params.get('mode')==='random'?'random':'fixed');
  await loadFixed();
+ setLocalNavigation(async url=>{const next=new URLSearchParams(url.search),previous=new URLSearchParams(params);next.delete('mode');previous.delete('mode');next.sort();previous.sort();if(next.toString()!==previous.toString())return false;showMode(url.searchParams.get('mode')||'fixed');return true;});
 
 }
 async function answer(){
  const id=params.get('id');if(!id)throw new Error('缺少练习编号，请重新开始练习');
  const data=await api(`/student/practices/${encodeURIComponent(id)}/questions`);
  const selections=new Map();let current=0,submitted=false;
- const leave=e=>{if(!submitted){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',leave);
+ setLeaveGuard(()=>!submitted);
  $('#main').innerHTML=heading('IN PROGRESS','把注意力留给这一题',`${data.practiceName||'自主练习'} · 整组提交后查看答案与解析。`)+`<div class="notice" id="answer-notice">未提交答案仅保存在当前页面，请勿刷新或关闭。</div><div class="question-layout"><section class="card" id="question-panel"></section><aside class="answer-sidebar"><div class="card"><h2>答题进度</h2><div id="answer-progress" class="muted small-text"></div><div class="answer-grid" id="answer-grid"></div><p class="small-text muted">深色为已作答，描边为当前题。</p><button id="submit" class="full-width">提交本次练习</button></div></aside></div>`;
  const shortage=sessionStorage.getItem('practice-notice');if(shortage){$('#answer-notice').textContent=shortage+' 未提交答案仅保存在当前页面，请勿刷新或关闭。';sessionStorage.removeItem('practice-notice');}
  function progress(){const answered=[...selections.values()].filter(v=>v.length).length;$('#answer-progress').textContent=`已作答 ${answered} / ${data.items.length} 题`;$('#answer-grid').innerHTML=data.items.map((q,i)=>`<button class="${selections.get(q.itemId)?.length?'answered':''} ${i===current?'current':''}" data-index="${i}" aria-label="第 ${i+1} 题">${i+1}</button>`).join('');$('#answer-grid').querySelectorAll('button').forEach(b=>b.onclick=()=>{current=Number(b.dataset.index);render();});}
  function render(){const q=data.items[current],selected=selections.get(q.itemId)||[];$('#question-panel').innerHTML=`<div class="row between"><span class="badge">${kinds[q.questionType]}</span><span class="muted small-text">第 ${current+1} / ${data.items.length} 题 · 每题 1 分</span></div><div class="question-stem">${esc(q.stem)}</div>${q.options.map(o=>`<label class="option"><input type="${q.questionType==='MULTIPLE'?'checkbox':'radio'}" name="answer" value="${o.label}" ${selected.includes(o.label)?'checked':''}><span class="option-letter">${q.questionType==='JUDGE'?'':o.label+'.'}</span><span>${esc(o.text)}</span></label>`).join('')}<div class="row between" style="margin-top:28px"><button id="previous" class="secondary" ${current===0?'disabled':''}>← 上一题</button><button id="next" class="secondary" ${current===data.items.length-1?'disabled':''}>下一题 →</button></div>`;
  $('#question-panel').querySelectorAll('input').forEach(input=>input.onchange=()=>{selections.set(q.itemId,[...$('#question-panel').querySelectorAll('input:checked')].map(el=>el.value));progress();});$('#previous').onclick=()=>{current--;render();};$('#next').onclick=()=>{current++;render();};progress();}
  render();
- $('#submit').onclick=()=>{const unanswered=data.items.length-[...selections.values()].filter(v=>v.length).length;if(!confirm(unanswered?`还有 ${unanswered} 道题未作答，未答计 0 分。确定提交吗？`:'确定提交本次练习吗？提交后无法修改。'))return;busy($('#submit'),async()=>{await api(`/student/practices/${encodeURIComponent(id)}/submit`,{method:'POST',body:{answers:data.items.map(q=>({itemId:q.itemId,selectedLabels:selections.get(q.itemId)||[]}))}});submitted=true;window.removeEventListener('beforeunload',leave);location.replace('/practice-result.html?id='+encodeURIComponent(id));});};
+ $('#submit').onclick=()=>{const unanswered=data.items.length-[...selections.values()].filter(v=>v.length).length;if(!confirm(unanswered?`还有 ${unanswered} 道题未作答，未答计 0 分。确定提交吗？`:'确定提交本次练习吗？提交后无法修改。'))return;busy($('#submit'),async()=>{await api(`/student/practices/${encodeURIComponent(id)}/submit`,{method:'POST',body:{answers:data.items.map(q=>({itemId:q.itemId,selectedLabels:selections.get(q.itemId)||[]}))}});submitted=true;go('/practice-result.html?id='+encodeURIComponent(id),true);});};
 }
 export function renderResult(data,user){
  const admin=user.role==='ADMIN',labels=(values,q)=>values.length?values.map(v=>q.questionType==='JUDGE'?(v==='A'?'正确':'错误'):v).join('、'):'未作答';
  $('#main').innerHTML=heading('PRACTICE RESULT','练习完成，看看这次的收获',`${data.practiceName||'练习结果'} · 提交于 ${time(data.submittedAt)} · 每题 1 分`,admin?`<a class="button secondary" href="/admin/student-detail.html?id=${esc(data.studentId)}">返回学生详情</a>`:`<a class="button" href="/student/analysis.html?courseId=${esc(data.courseId)}">查看薄弱项 →</a>`)+`<div class="card"><div class="row between"><div><div class="muted small-text">本次得分</div><div class="result-score">${data.correctCount}<small> / ${data.questionCount}</small></div></div><div><h2>${pct(data.accuracy)}</h2><div class="muted small-text">本次正确率</div></div><div><h2>${data.questionCount-data.correctCount} 题</h2><div class="muted small-text">需要回顾的题目</div></div></div></div><div class="section-title"><h2>逐题回顾</h2><span class="muted small-text">选项顺序与本次练习一致</span></div>${data.items.map(q=>`<article class="card result-item" id="item-${esc(q.itemId)}"><div class="row between"><span class="small-text">第 ${q.orderNo} 题 · ${kinds[q.questionType]}</span><span class="badge ${q.isCorrect?'good':'weak'}">${q.isCorrect?'回答正确':q.selectedLabels.length?'回答错误':'未作答'}</span></div><div class="question-stem">${esc(q.stem)}</div>${q.options.map(o=>`<div class="option ${q.correctLabels.includes(o.label)?'correct':q.selectedLabels.includes(o.label)?'wrong':''}"><span class="option-letter">${q.questionType==='JUDGE'?'':o.label+'.'}</span><span>${esc(o.text)}</span>${q.selectedLabels.includes(o.label)?'<span class="badge" style="margin-left:auto">你的选择</span>':''}</div>`).join('')}<p class="small-text">你的答案：<strong>${esc(labels(q.selectedLabels,q))}</strong>　正确答案：<strong>${esc(labels(q.correctLabels,q))}</strong></p><div class="explanation"><strong>答案解析</strong><p>${esc(q.explanation)}</p></div></article>`).join('')}<div class="row">${admin?'':`<a class="button secondary" href="/student/practice.html?courseId=${esc(data.courseId)}">再练一组</a><a class="button secondary" href="/student/wrong.html?courseId=${esc(data.courseId)}">去错题本</a>`}</div>`;
- if(location.hash)requestAnimationFrame(()=>document.getElementById(location.hash.slice(1))?.scrollIntoView());
+
 }
 export function historyTable(rows){return table(['课程','提交时间','练习类型','题量','得分','正确率','操作'],rows.map(r=>`<tr><td>${esc(r.courseName)}${r.chapterName?`<span class="sub">${esc(r.chapterName)}</span>`:''}</td><td>${esc(time(r.submittedAt))}</td><td><span class="badge">${r.sourceType==='CHAPTER'?'固定章节练习':r.sourceType==='WRONG'?'错题重练':'自主随机练习'}</span></td><td>${number(r.questionCount)}</td><td>${r.correctCount} / ${r.questionCount}</td><td>${pct(r.accuracy)}${bar(r.accuracy)}</td><td><a href="/practice-result.html?id=${esc(r.practiceId)}">查看结果 →</a></td></tr>`));}
 async function history(){
@@ -133,7 +136,7 @@ async function wrong(){
   if(!selected.size)return toast('请先勾选要重练的错题');
   busy($('#retry-wrong'),async()=>{
    const data=await api('/student/practices/from-wrong',{method:'POST',body:{courseId:$('#course').value,questionIds:[...selected]}});
-   location.href='/student/answer.html?id='+encodeURIComponent(data.practiceId);
+   go('/student/answer.html?id='+encodeURIComponent(data.practiceId));
   });
  };
  await courseChange();

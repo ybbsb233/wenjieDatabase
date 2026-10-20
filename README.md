@@ -179,3 +179,11 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
 公网无需运行本地服务。已启用 Let’s Encrypt 公网IP HTTPS证书；证书路径 `/etc/letsencrypt/live/learning-analysis-ip/`。`learning-analysis-cert-renew.timer` 每天两次检查续期，成功续期自动重载Nginx。80端口保留ACME验证入口，443提供HTTPS。续期检查：`sudo /opt/certbot/bin/certbot renew --cert-name learning-analysis-ip --dry-run`。官方IP证书说明：https://letsencrypt.org/2026/03/11/shorter-certs-certbot 。演示账号密码随数据库保留，管理员可在账号设置中修改密码。服务器SSH密码不保存在项目文件中。
+
+## 局部导航与浏览器回归（2026-10-20）
+
+项目仍采用原生 JavaScript 和现有页面渲染函数。已知业务页面的普通站内链接通过 History API 切换；侧栏、顶栏保留，主内容在数据完成后一次替换。学生详情页的标签及统计卡片链接只更新下方内容，标签和课程写入地址栏。练习方式切换也支持历史记录。读取数据保留旧内容，提供加载状态；失败保留当前页面并可重试。旧 GET 请求通过 AbortController 取消，写操作进行期间阻止业务页面切换；离开未提交练习或修改中的表单会提醒。滚动条空间固定保留。
+
+登录、退出、密码修改后重新登录、登录失效、外部链接、下载、新窗口及未注册业务路径保持浏览器原生加载。直接打开业务 HTML 和刷新仍从服务端加载入口，再按 URL 渲染对应内容。
+
+浏览器回归脚本 `scripts/verify_navigation.cjs` 使用 Playwright 启动真实 Chrome/Chromium、临时静态服务及可控 API 数据，不写入数据库。先提供可解析的 `playwright` 包，或通过 `PLAYWRIGHT_MODULE` 指定其模块路径；可选 `CHROME_EXECUTABLE` 指定浏览器，然后执行 `node scripts/verify_navigation.cjs`。本次验证涵盖学生与管理员侧栏、详情标签和卡片链接、长短页面宽度、前进后退、拒绝离开后的历史恢复、直接访问和刷新、加载期间保留内容、失败重试、快速导航和筛选、链接原生行为、权限限制、答题离开提醒及提交、登录失效和重新登录，同时检查未捕获浏览器错误。浏览器行为测试使用模拟 API；随后已启动真实后端，验证管理员登录、受保护课程查询，以及 49 项静态资源与 Nginx HTTP 检查通过。

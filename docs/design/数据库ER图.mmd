@@ -1,77 +1,26 @@
-erDiagram
-    APP_USER ||--o{ PRACTICE : submits
-    COURSE ||--o{ CHAPTER : contains
-    CHAPTER ||--o{ KNOWLEDGE_POINT : contains
-    CHAPTER ||--o{ QUESTION : owns
-    QUESTION ||--|{ QUESTION_KNOWLEDGE : tags
-    KNOWLEDGE_POINT ||--o{ QUESTION_KNOWLEDGE : linked
-    COURSE ||--o{ PRACTICE : selected
-    CHAPTER |o--o{ PRACTICE : fixed_set
-    PRACTICE ||--|{ PRACTICE_ITEM : contains
-    QUESTION ||--o{ PRACTICE_ITEM : answered
-    APP_USER {
-        bigint id PK
-        varchar username UK
-        varchar real_name
-        varchar password_hash
-        varchar role
-        tinyint enabled
-        tinyint must_change_password
-        bigint token_version
-    }
-    COURSE {
-        bigint id PK
-        varchar name UK
-        int sort_order
-    }
-    CHAPTER {
-        bigint id PK
-        bigint course_id FK
-        varchar name
-        int sort_order
-        tinyint is_current
-    }
-    KNOWLEDGE_POINT {
-        bigint id PK
-        bigint chapter_id FK
-        varchar name
-        int sort_order
-    }
-    QUESTION {
-        bigint id PK
-        bigint chapter_id FK
-        varchar question_type
-        text stem
-        varchar option_a
-        varchar option_b
-        varchar option_c
-        varchar option_d
-        varchar correct_answer
-        text explanation
-    }
-    QUESTION_KNOWLEDGE {
-        bigint question_id PK,FK
-        bigint knowledge_id PK,FK
-    }
-    PRACTICE {
-        bigint id PK
-        bigint student_id FK
-        bigint course_id FK
-        bigint chapter_id FK
-        tinyint archived
-        varchar source_type
-        varchar status
-        int question_count
-        int correct_count
-        datetime started_at
-        datetime submitted_at
-    }
-    PRACTICE_ITEM {
-        bigint id PK
-        bigint practice_id FK
-        bigint question_id FK
-        int order_no
-        varchar option_order
-        varchar selected_answer
-        tinyint is_correct
-    }
+flowchart TB
+    C[课程] ---|1| R1{包含} ---|N| H[章节]
+    H ---|1| R2{包含} ---|N| K[知识点]
+    H ---|1| R3{收录} ---|N| Q[题目]
+    K ---|N| R4{涉及} ---|M| Q
+    U[账号] ---|1| R5{发起} ---|N| P[练习]
+    C ---|1| R6{归属} ---|N| P
+    H ---|1| R7{限定} ---|N| P
+    P ---|M| R8{作答} ---|N| Q
+    R8 --- A1([题序])
+    R8 --- A2([选项排列])
+    R8 --- A3([本次答案])
+    R8 --- A4([明细编号])
+    C --- C1([课程编号])
+    C --- C2([课程名称])
+    H --- H1([章节编号])
+    H --- H2([章节名称])
+    K --- K1([知识点编号])
+    K --- K2([知识点名称])
+    U --- U1([账号编号])
+    U --- U2([姓名])
+    P --- P1([练习编号])
+    P --- P2([提交时间])
+    Q --- Q1([题目编号])
+    Q --- Q2([题干])
+    linkStyle default stroke:#000
